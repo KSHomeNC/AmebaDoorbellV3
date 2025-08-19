@@ -21,14 +21,15 @@ bool fileRemove( String fname){
   if (fs.status()){    
    return fs.remove(rootPath + fname);
   }
-    
-  
+  else{
+    return false;
+  } 
 }
 int fileRead(String fname, unsigned char* buff, int size){
   int len =0;
   if (fs.status()){    
     File file = fs.open(rootPath + fname);
-    if( file != NULL){
+    if( file ){
       len = file.read((void*)buff, size); 
       file.close(); 
     }
@@ -41,7 +42,7 @@ int fileWrite( String fname, unsigned char* buff, int size){
 
   if (fs.status()){   
     File file = fs.open(rootPath + fname);
-    if( file != NULL){
+    if( file ){
       len = file.write(buff, size);  
       file.close();
     }
