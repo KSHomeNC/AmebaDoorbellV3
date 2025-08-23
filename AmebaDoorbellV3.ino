@@ -25,7 +25,7 @@ LEDManager ledManager;
 ButtonManager buttonManager(BUTTON_PIN);
 MQTTManager mqttManager;
 
-String FW_VERSION = "3.1.000";
+String FW_VERSION = "3.1.001";
 WDT wdt(AON_WDT_Enable);
 #define CHANNEL 0
 #define HOST_NAME "Ameba_doorbellTest"
@@ -339,6 +339,7 @@ void captureImageAndStore()
     Serial.println(img_len) ;
 }
 bool skipWdtRefresh =false;
+unsigned long doorbellLiveDuration = 60000; //default 1 minutes
 void loop() {
   if (buttonManager.isButtonPressed()) {
     if (!isButtonPressed) { // Only handle the button press once
@@ -347,7 +348,7 @@ void loop() {
 
       // Set the LED pattern
    
-      ledManager.setNextPatternMultiple(30000); // for 30 sec
+      ledManager.setNextPatternMultiple(doorbellLiveDuration); // for 30 sec
       cameraReStart();
       isVideoStarted = true;  
       startTimeV = millis();
@@ -358,7 +359,7 @@ void loop() {
       textToSpeech("doorBell.mp3", " Welcome at 3580, please wait for some time");
       captureImageAndStore();
       Serial.println("Button pressed. Setting LED pattern for 10 seconds.");
-      wdtStart(60000); // reboot after 1 minute
+      wdtStart(doorbellLiveDuration); // reboot after 1 minute
       skipWdtRefresh = true;
     }
   }
