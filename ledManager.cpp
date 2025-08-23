@@ -117,7 +117,8 @@ void LEDManager::singlePatternHandler() {
 }
 
 void LEDManager::multiplePatternHandler() { // making 1 sec pattern
-  if(isLedTimerExpire(multipleLedToggleStartT, multipleLedToggleDuration)){
+ int ledFrequency = 100;
+ if(isLedTimerExpire(multipleLedToggleStartT, multipleLedToggleDuration)){
     currentLedPatternState = PreviousLedPatternState;
   }else{
     if(multipleLedloopStartT == 0){
@@ -125,18 +126,18 @@ void LEDManager::multiplePatternHandler() { // making 1 sec pattern
       digitalWrite(ledArray[multipleLedCnt++].ledPin,true);
       onTime= true;
     }else{
-      if(onTime && isLedTimerExpire(multipleLedloopStartT, 1000)){ // one sec
+      if(onTime && isLedTimerExpire(multipleLedloopStartT, ledFrequency)){
         digitalWrite(ledArray[multipleLedCnt++].ledPin,true);
         multipleLedloopStartT=millis();
-        if(multipleLedCnt> MAX_LEDS){
+        if(multipleLedCnt> (MAX_LEDS-1)){
           multipleLedCnt = 0;
           onTime = false;
         }
         
-      }else if(isLedTimerExpire(multipleLedloopStartT, 1000)){
+      }else if(isLedTimerExpire(multipleLedloopStartT, ledFrequency)){
         digitalWrite(ledArray[multipleLedCnt++].ledPin,false);
         multipleLedloopStartT=millis();
-        if(multipleLedCnt> MAX_LEDS){
+        if(multipleLedCnt> (MAX_LEDS-1)){
           multipleLedCnt = 0;
           onTime = true;
         }
