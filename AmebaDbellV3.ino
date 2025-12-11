@@ -25,7 +25,7 @@ LEDManager ledManager;
 ButtonManager buttonManager(BUTTON_PIN);
 MQTTManager mqttManager;
 
-String FW_VERSION = "3.1.001";
+String FW_VERSION = "3.1.000";
 WDT wdt(AON_WDT_Enable);
 #define CHANNEL 0
 #define HOST_NAME "Ameba_doorbellTest"
@@ -53,11 +53,23 @@ String rstpLink ="";
 char ssid[] = "subhSpec";    // your network SSID (name)
 char pass[] = "pawan@158";        // your network password
 int status = WL_IDLE_STATUS;
-void getRstpLink();
+String getRstpLink();
+bool skipWdtRefresh =false;
+
+bool isVideoStarted = false;
+unsigned long startTimeV =0;
+unsigned long endTimeV=60000; // default 1 minutes
+
+unsigned long buttonPressTime = 0; // Tracks the time when the button was pressed
+bool isButtonPressed = false;      // Tracks if the button press is being handled
+const int ledPatternOffTime = 10000; // 10 seconds
+bool isWiFiAvailable = true;
+unsigned long wifiDisconnectTime = 0;
+unsigned long wifiDisconnectTimeOut_ms = 10000;// 10 sec
 
 
 #define isTimeOut(st,to)  (((millis()-st)>to)?true:false)
-
+void triggeredWD( unsigned long time_ms);
 
 
 void wdtStart( unsigned long time_ms){
@@ -76,6 +88,11 @@ void wdtStart( unsigned long time_ms){
 
     // enable watchdog timer
     wdt.start();
+}
+
+void triggeredWD( unsigned long time_ms){
+    wdtStart(time_ms);
+    skipWdtRefresh = true;   
 }
 
 void system_recover(){
@@ -112,27 +129,13 @@ void cameraReStart() {
             break;
         }
     }while(  cnt< 5);
-    //if (audioStreamer.begin() != 0) Serial.println("audioStreamer begin failed");
+    
     cnt =0;
 
     avMixStreamer.registerInput1(Camera.getStream(CHANNEL));
     avMixStreamer.registerInput2(aac);
     avMixStreamer.registerOutput(rtsp);
-    
-   /* do{
-        if(avMixStreamer.begin() != 0){
-            delay(100);
-            cnt++;
-            Serial.println("avMixStreamer begin failed");
-            avMixStreamer.end();
-        }
-        else {
-            break;
-        }
-    }while(  cnt< 5);  
 
-    cnt=0;
-*/
     avMixStreamer.resume();
 
     // Start sink first, then producer
@@ -142,96 +145,6 @@ void cameraReStart() {
 
     delay(300);
     printInfo();
-}
-
-void cameraSetup() {
-    int cnt = 0;
-    // 1) Configure video, then init video module
-    Camera.configVideoChannel(CHANNEL, configV);
-    Camera.configVideoChannel(CHANNELJPEG, configJPEG);
-    Camera.videoInit();            // or Camera.videoInit(CHANNEL);
-
-    // 2) Audio path
-    audio.configAudio(configA);
-    audio.begin();
-    aac.configAudio(configA);
-    aac.begin();
-
-    // 3) RTSP + StreamIO (get consumers ready before frames start)
-    rtsp.configVideo(configV);
-    rtsp.configAudio(configA, CODEC_AAC);
-
-    audioStreamer.registerInput(audio);
-    audioStreamer.registerOutput(aac);
-    do{
-        if(audioStreamer.begin() != 0){
-            delay(100);
-            cnt++;
-            Serial.println("audioStreamer begin failed");
-        }
-        else {
-            break;
-        }
-    }while(  cnt< 5);
-    //if (audioStreamer.begin() != 0) Serial.println("audioStreamer begin failed");
-    cnt =0;
-
-    avMixStreamer.registerInput1(Camera.getStream(CHANNEL));
-    avMixStreamer.registerInput2(aac);
-    avMixStreamer.registerOutput(rtsp);
-    do{
-        if(avMixStreamer.begin() != 0){
-            delay(100);
-            cnt++;
-            Serial.println("avMixStreamer begin failed");
-            avMixStreamer.end();
-        }
-        else {
-            break;
-        }
-    }while(  cnt< 5);  
-
-    cnt=0;
-
-    // Start sink first, then producer
-    rtsp.begin();
-    
-    Camera.channelBegin(CHANNEL);
-    Camera.channelBegin(CHANNELJPEG);
-
-    delay(300);
-    printInfo();
-}
-
-void cameraRelease() {
-    // Stop sinks/consumers first
-  rtsp.end();
-  
-
-  // Then streamers/mixers
-  audioStreamer.end();  
-  avMixStreamer.end();
-  
-  
-  // Then the producer (camera)
-  Camera.channelEnd(CHANNEL);
-
-  // Tear down audio
-  aac.end();
-  
-  audio.end();
-
-  // Fully deinit video for this channel (or use the all-channels version)
-  Camera.videoDeinit(CHANNEL);   // <- use this
-  // Camera.videoDeinit();       // (all channels) alternative
-
-  // Optional: wait until the driver reports the channel is down
-  unsigned long t0 = millis();
-  while (Camera.videostream_status(CHANNEL) != 0 && (millis() - t0) < 500) {
-    delay(10);
-  }
-
-  delay(300);
 }
 
 void wifiInit()
@@ -297,16 +210,6 @@ void setup()
     ledInfo.offDuration =5000;
     ledManager.setNextPatternSingle(GREEN, &ledInfo); 
 }
-bool isVideoStarted = false;
-unsigned long startTimeV =0;
-unsigned long endTimeV=60000; // default 1 minutes
-
-unsigned long buttonPressTime = 0; // Tracks the time when the button was pressed
-bool isButtonPressed = false;      // Tracks if the button press is being handled
-const int ledPatternOffTime = 10000; // 10 seconds
-bool isWiFiAvailable = true;
-unsigned long wifiDisconnectTime = 0;
-unsigned long wifiDisconnectTimeOut_ms = 10000;// 10 sec
 
 void checkWiFiStatus()
 {
@@ -338,8 +241,7 @@ void captureImageAndStore()
     Serial.print(" picture saved of size: ") ;
     Serial.println(img_len) ;
 }
-bool skipWdtRefresh =false;
-unsigned long doorbellLiveDuration = 60000; //default 1 minutes
+
 void loop() {
   if (buttonManager.isButtonPressed()) {
     if (!isButtonPressed) { // Only handle the button press once
@@ -348,19 +250,21 @@ void loop() {
 
       // Set the LED pattern
    
-      ledManager.setNextPatternMultiple(doorbellLiveDuration); // for 30 sec
+      ledManager.setNextPatternMultiple(30000); // for 30 sec
       cameraReStart();
       isVideoStarted = true;  
       startTimeV = millis();
       char tmpBuf[64];
       rstpLink.toCharArray(tmpBuf, (rstpLink.length()+1));
       // Publish MQTT message
-      mqttManager.publishMessage( PUB_TOPIC_BELL,tmpBuf);
+      mqttManager.publishMessage( PUB_TOPIC_BELL,tmpBuf,1);
       textToSpeech("doorBell.mp3", " Welcome at 3580, please wait for some time");
       captureImageAndStore();
       Serial.println("Button pressed. Setting LED pattern for 10 seconds.");
-      wdtStart(doorbellLiveDuration); // reboot after 1 minute
+      wdtStart(60000); // reboot after 1 minute
       skipWdtRefresh = true;
+      delay(5000); // to get the mqtt message delivered
+      mqttManager.disconnect();
     }
   }
   // Check if the LEDs need to be turned off after the specified time
@@ -368,15 +272,7 @@ void loop() {
     isButtonPressed = false;        // Reset the button press state
     Serial.println("LEDs turned off after 10 seconds.");
   }
-/*
-  if(isVideoStarted){
-    if( (millis() - startTimeV) >= endTimeV){
-        isVideoStarted = false;
-        cameraRelease();
-        Serial.println("Video streaming stopped");
-    }
-  }
-  */
+
   ledManager.loop();
   checkWiFiStatus();
   textToSpeechLoop();
@@ -384,17 +280,18 @@ void loop() {
     wdt.refresh(); // refresh the watchdog
   }
   
-  //mqttManager.loop();
-  //delay(10);
+  mqttManager.loop(); 
 }
 
-void getRstpLink()
+String getRstpLink()
 {
     IPAddress ip = WiFi.localIP();
     
     rstpLink = "rtsp://" + String(ip.get_address()) + ":" +String(rtsp.getPort());
     Serial.println(rstpLink);
+    return rstpLink;
 }
+
 void printInfo(void)
 {
     Serial.println("------------------------------");

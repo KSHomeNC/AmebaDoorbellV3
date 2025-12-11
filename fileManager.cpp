@@ -20,16 +20,17 @@ void fsBegin(){
 bool fileRemove( String fname){
   if (fs.status()){    
    return fs.remove(rootPath + fname);
-  }
-  else{
+  }else{
     return false;
-  } 
+  }
+
+
 }
 int fileRead(String fname, unsigned char* buff, int size){
   int len =0;
   if (fs.status()){    
     File file = fs.open(rootPath + fname);
-    if( file ){
+    if( file){
       len = file.read((void*)buff, size); 
       file.close(); 
     }
